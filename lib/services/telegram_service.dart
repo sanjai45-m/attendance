@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class TelegramService {
@@ -8,7 +9,14 @@ class TelegramService {
     required String chatId,
     required String message,
   }) async {
-    if (botToken.isEmpty || chatId.isEmpty) return false;
+    debugPrint('[TelegramService] sendMessage called');
+    debugPrint('[TelegramService] botToken: ${botToken.isNotEmpty ? "${botToken.substring(0, 5)}..." : "EMPTY"}');
+    debugPrint('[TelegramService] chatId: $chatId');
+
+    if (botToken.isEmpty || chatId.isEmpty) {
+      debugPrint('[TelegramService] Skipping — botToken or chatId is empty');
+      return false;
+    }
 
     try {
       final url = Uri.parse(
@@ -25,8 +33,12 @@ class TelegramService {
         }),
       );
 
+      debugPrint('[TelegramService] Response status: ${response.statusCode}');
+      debugPrint('[TelegramService] Response body: ${response.body}');
+
       return response.statusCode == 200;
     } catch (e) {
+      debugPrint('[TelegramService] ERROR: $e');
       // Silently fail — Telegram is a nice-to-have, not critical
       return false;
     }

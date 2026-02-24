@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:attendance/models/attendance_model.dart';
 import 'package:attendance/models/app_settings_model.dart';
@@ -207,6 +208,10 @@ class AttendanceProvider extends ChangeNotifier {
   /// Stream employee's attendance history
   void loadMyHistory(String uid) {
     _historySubscription?.cancel();
+    if (FirebaseAuth.instance.currentUser == null) {
+      debugPrint('[AttendanceProvider] Skipping loadMyHistory — not authenticated');
+      return;
+    }
     _historySubscription = _firestoreService.streamMyAttendance(uid).listen(
       (list) {
         _myHistory = list;
@@ -223,17 +228,42 @@ class AttendanceProvider extends ChangeNotifier {
   void loadDailyAttendance(String date) {
     _selectedDate = date;
     _dailySubscription?.cancel();
-    _dailySubscription =
-        _firestoreService.streamAttendanceByDate(date).listen(
-      (list) {
-        _dailyAttendance = list;
-        notifyListeners();
-      },
-      onError: (e) {
-        _error = 'Failed to load daily attendance.';
-        notifyListeners();
-      },
-    );
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+    debugPrint('[AttendanceProvider] loadDailyAttendance called for date: $date');
+    debugPrint('[AttendanceProvider] Current auth user: ${currentUser?.uid ?? "NULL"}');
+
+    if (currentUser == null) {
+      debugPrint('[AttendanceProvider] Skipping — not authenticated');
+      return;
+    }
+
+    // First try a one-time get() to test if the query works at all
+    FirebaseFirestore.instance
+        .collection('attendance')
+        .where('date', isEqualTo: date)
+        .get()
+        .then((snapshot) {
+      debugPrint('[AttendanceProvider] GET query succeeded! Found ${snapshot.docs.length} docs');
+      // If GET works, set up the stream
+      _dailySubscription =
+          _firestoreService.streamAttendanceByDate(date).listen(
+        (list) {
+          _dailyAttendance = list;
+          notifyListeners();
+        },
+        onError: (e) {
+          debugPrint('[AttendanceProvider] Stream error: $e');
+          _error = 'Failed to load daily attendance.';
+          notifyListeners();
+        },
+      );
+    }).catchError((e) {
+      debugPrint('[AttendanceProvider] GET query FAILED: $e');
+      debugPrint('[AttendanceProvider] Error type: ${e.runtimeType}');
+      _error = 'Failed to load daily attendance.';
+      notifyListeners();
+    });
   }
 
   /// Load report data (admin)

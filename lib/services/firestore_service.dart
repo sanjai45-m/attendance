@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:attendance/models/user_model.dart';
 import 'package:attendance/models/attendance_model.dart';
 import 'package:attendance/models/app_settings_model.dart';
@@ -15,9 +16,11 @@ class FirestoreService {
         .collection(FirestorePaths.users)
         .orderBy('name')
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UserModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => UserModel.fromMap(doc.data(), doc.id))
+              .toList(),
+        );
   }
 
   /// Get single user by UID
@@ -33,18 +36,12 @@ class FirestoreService {
   /// Update employee details
   Future<void> updateUser(String uid, Map<String, dynamic> data) async {
     data['updatedAt'] = Timestamp.now();
-    await _firestore
-        .collection(FirestorePaths.users)
-        .doc(uid)
-        .update(data);
+    await _firestore.collection(FirestorePaths.users).doc(uid).update(data);
   }
 
   /// Delete employee
   Future<void> deleteUser(String uid) async {
-    await _firestore
-        .collection(FirestorePaths.users)
-        .doc(uid)
-        .delete();
+    await _firestore.collection(FirestorePaths.users).doc(uid).delete();
   }
 
   // ─── Attendance ─────────────────────────────────────────
@@ -59,7 +56,10 @@ class FirestoreService {
         .get();
 
     if (query.docs.isEmpty) return null;
-    return AttendanceModel.fromMap(query.docs.first.data(), query.docs.first.id);
+    return AttendanceModel.fromMap(
+      query.docs.first.data(),
+      query.docs.first.id,
+    );
   }
 
   /// Create attendance record (punch in)
@@ -84,11 +84,17 @@ class FirestoreService {
     return _firestore
         .collection(FirestorePaths.attendance)
         .where(FirestorePaths.dateField, isEqualTo: date)
-        .orderBy('punchIn', descending: false)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => AttendanceModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map((snapshot) {
+          final list = snapshot.docs
+              .map((doc) => AttendanceModel.fromMap(doc.data(), doc.id))
+              .toList();
+          list.sort(
+            (a, b) =>
+                (a.punchIn ?? DateTime(0)).compareTo(b.punchIn ?? DateTime(0)),
+          );
+          return list;
+        });
   }
 
   /// Stream employee's own attendance history (latest first)
@@ -99,9 +105,11 @@ class FirestoreService {
         .orderBy(FirestorePaths.dateField, descending: true)
         .limit(30)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => AttendanceModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => AttendanceModel.fromMap(doc.data(), doc.id))
+              .toList(),
+        );
   }
 
   /// Query attendance for report (by date range and optional employee)
@@ -123,8 +131,12 @@ class FirestoreService {
 
     final snapshot = await query.get();
     return snapshot.docs
-        .map((doc) => AttendanceModel.fromMap(
-            doc.data() as Map<String, dynamic>, doc.id))
+        .map(
+          (doc) => AttendanceModel.fromMap(
+            doc.data() as Map<String, dynamic>,
+            doc.id,
+          ),
+        )
         .toList();
   }
 
@@ -138,7 +150,14 @@ class FirestoreService {
         .get();
 
     if (!doc.exists) return AppSettingsModel();
-    return AppSettingsModel.fromMap(doc.data()!);
+    final rawData = doc.data()!;
+    // Sanitize keys — trim whitespace/tabs that may have been accidentally added
+    final data = rawData.map((key, value) => MapEntry(key.trim(), value));
+    debugPrint(
+      '[FirestoreService] Raw settings keys: ${rawData.keys.map((k) => '"$k"').toList()}',
+    );
+    debugPrint('[FirestoreService] Sanitized keys: ${data.keys.toList()}');
+    return AppSettingsModel.fromMap(data);
   }
 
   /// Update settings
@@ -156,8 +175,8 @@ class FirestoreService {
         .doc(FirestorePaths.appSettings)
         .snapshots()
         .map((doc) {
-      if (!doc.exists) return AppSettingsModel();
-      return AppSettingsModel.fromMap(doc.data()!);
-    });
+          if (!doc.exists) return AppSettingsModel();
+          return AppSettingsModel.fromMap(doc.data()!);
+        });
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:attendance/models/app_settings_model.dart';
 import 'package:attendance/services/firestore_service.dart';
@@ -22,7 +23,11 @@ class SettingsProvider extends ChangeNotifier {
 
     try {
       _settings = await _firestoreService.getSettings();
+      debugPrint('[SettingsProvider] Settings loaded successfully');
+      debugPrint('[SettingsProvider] botToken: ${_settings.telegramBotToken.isNotEmpty ? "SET" : "EMPTY"}');
+      debugPrint('[SettingsProvider] chatId: ${_settings.telegramChatId.isNotEmpty ? "SET" : "EMPTY"}');
     } catch (e) {
+      debugPrint('[SettingsProvider] ERROR loading settings: $e');
       _error = 'Failed to load settings.';
     }
 
