@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:attendance/core/constants/app_strings.dart';
 import 'package:attendance/core/theme/app_theme.dart';
@@ -13,10 +14,11 @@ class App extends StatefulWidget {
 }
 
 class _AppState extends State<App> {
+  GoRouter? _router;
+
   @override
   void initState() {
     super.initState();
-    // Initialize auth state
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<AuthProvider>().initialize();
     });
@@ -24,11 +26,14 @@ class _AppState extends State<App> {
 
   @override
   Widget build(BuildContext context) {
+    // Create router once so refreshListenable works properly
+    _router ??= AppRouter.router(context);
+
     return MaterialApp.router(
       title: AppStrings.appName,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      routerConfig: AppRouter.router(context),
+      routerConfig: _router!,
     );
   }
 }

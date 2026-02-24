@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
+import 'package:googleapis_auth/auth_io.dart';
 import 'package:attendance/core/constants/firestore_paths.dart';
 
 class FCMService {
@@ -11,11 +13,7 @@ class FCMService {
 
   /// Request notification permission
   Future<void> requestPermission() async {
-    await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    await _messaging.requestPermission(alert: true, badge: true, sound: true);
   }
 
   /// Get FCM device token
@@ -31,10 +29,9 @@ class FCMService {
     try {
       final token = await getToken();
       if (token != null) {
-        await _firestore
-            .collection(FirestorePaths.users)
-            .doc(uid)
-            .update({'fcmToken': token});
+        await _firestore.collection(FirestorePaths.users).doc(uid).update({
+          'fcmToken': token,
+        });
         debugPrint('[FCMService] Token saved for user $uid');
       }
     } catch (e) {
@@ -45,10 +42,9 @@ class FCMService {
   /// Listen for token refresh and update Firestore
   void listenForTokenRefresh(String uid) {
     onTokenRefresh.listen((newToken) async {
-      await _firestore
-          .collection(FirestorePaths.users)
-          .doc(uid)
-          .update({'fcmToken': newToken});
+      await _firestore.collection(FirestorePaths.users).doc(uid).update({
+        'fcmToken': newToken,
+      });
       debugPrint('[FCMService] Token refreshed for user $uid');
     });
   }
@@ -76,11 +72,46 @@ class FCMService {
     }
   }
 
-  /// Send push notification to admins when employee punches in/out
+  /// Get OAuth2 access token using service account
+  Future<String?> _getAccessToken() async {
+    try {
+      final serviceAccountJson = await rootBundle.loadString(
+        'assets/service-account.json',
+      );
+      final credentials = ServiceAccountCredentials.fromJson(
+        serviceAccountJson,
+      );
+
+      final scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
+      final authClient = await clientViaServiceAccount(credentials, scopes);
+      final token = authClient.credentials.accessToken.data;
+      authClient.close();
+
+      return token;
+    } catch (e) {
+      debugPrint('[FCMService] Error getting access token: $e');
+      return null;
+    }
+  }
+
+  /// Get Firebase project ID from service account
+  Future<String?> _getProjectId() async {
+    try {
+      final serviceAccountJson = await rootBundle.loadString(
+        'assets/service-account.json',
+      );
+      final data = jsonDecode(serviceAccountJson) as Map<String, dynamic>;
+      return data['project_id'] as String?;
+    } catch (e) {
+      debugPrint('[FCMService] Error getting project ID: $e');
+      return null;
+    }
+  }
+
+  /// Send push notification to admins using FCM v1 API
   Future<void> sendPunchNotification({
     required String title,
     required String body,
-    required String serverKey,
   }) async {
     try {
       final adminTokens = await getAdminTokens();
@@ -89,24 +120,40 @@ class FCMService {
         return;
       }
 
+      final accessToken = await _getAccessToken();
+      if (accessToken == null) {
+        debugPrint('[FCMService] Failed to get access token');
+        return;
+      }
+
+      final projectId = await _getProjectId();
+      if (projectId == null) {
+        debugPrint('[FCMService] Failed to get project ID');
+        return;
+      }
+
+      final url = Uri.parse(
+        'https://fcm.googleapis.com/v1/projects/$projectId/messages:send',
+      );
+
       for (final token in adminTokens) {
         final response = await http.post(
-          Uri.parse('https://fcm.googleapis.com/fcm/send'),
+          url,
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'key=$serverKey',
+            'Authorization': 'Bearer $accessToken',
           },
           body: jsonEncode({
-            'to': token,
-            'notification': {
-              'title': title,
-              'body': body,
-              'sound': 'default',
-            },
-            'priority': 'high',
-            'data': {
-              'click_action': 'FLUTTER_NOTIFICATION_CLICK',
-              'type': 'punch_event',
+            'message': {
+              'token': token,
+              'notification': {'title': title, 'body': body},
+              'android': {
+                'priority': 'HIGH',
+                'notification': {
+                  'channel_id': 'attendance_notifications',
+                  'sound': 'default',
+                },
+              },
             },
           }),
         );
@@ -114,7 +161,9 @@ class FCMService {
         if (response.statusCode == 200) {
           debugPrint('[FCMService] Push notification sent successfully');
         } else {
-          debugPrint('[FCMService] Push failed: ${response.body}');
+          debugPrint(
+            '[FCMService] Push failed (${response.statusCode}): ${response.body}',
+          );
         }
       }
     } catch (e) {
@@ -129,7 +178,8 @@ class FCMService {
 
   /// Setup background message handler (must be top-level function)
   static void setupBackgroundHandler(
-      Future<void> Function(RemoteMessage) handler) {
+    Future<void> Function(RemoteMessage) handler,
+  ) {
     FirebaseMessaging.onBackgroundMessage(handler);
   }
 }

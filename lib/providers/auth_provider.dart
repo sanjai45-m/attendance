@@ -1,30 +1,43 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:attendance/models/user_model.dart';
 import 'package:attendance/core/enums/user_role.dart';
 import 'package:attendance/services/auth_service.dart';
+import 'package:attendance/services/fcm_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
+  final FCMService _fcmService = FCMService();
 
   UserModel? _currentUser;
   bool _isLoading = false;
+  bool _isInitialized = false;
   String? _error;
 
   UserModel? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
+  bool get isInitialized => _isInitialized;
   String? get error => _error;
   bool get isLoggedIn => _currentUser != null;
   bool get isAdmin => _currentUser?.role == UserRole.admin;
   String? get uid => _authService.currentUser?.uid;
 
-  /// Initialize — check if already logged in
+  /// Initialize — check if already logged in (auto-login)
   Future<void> initialize() async {
-    final firebaseUser = _authService.currentUser;
-    if (firebaseUser != null) {
-      _currentUser = await _authService.getUserDoc(firebaseUser.uid);
-      notifyListeners();
+    try {
+      final firebaseUser = _authService.currentUser;
+      if (firebaseUser != null) {
+        _currentUser = await _authService.getUserDoc(firebaseUser.uid);
+        if (_currentUser != null) {
+          await _setupFCM(_currentUser!.uid);
+        }
+      }
+    } catch (e) {
+      debugPrint('[AuthProvider] Auto-login failed: $e');
     }
+    _isInitialized = true;
+    notifyListeners();
   }
 
   /// Login
@@ -43,6 +56,10 @@ class AuthProvider extends ChangeNotifier {
       }
       _isLoading = false;
       notifyListeners();
+
+      // Setup FCM after successful login
+      await _setupFCM(_currentUser!.uid);
+
       return true;
     } on FirebaseAuthException catch (e) {
       _error = _parseAuthError(e.code);
@@ -120,6 +137,24 @@ class AuthProvider extends ChangeNotifier {
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  /// Setup FCM: request permission, save token, listen for refresh, handle foreground
+  Future<void> _setupFCM(String uid) async {
+    try {
+      await _fcmService.requestPermission();
+      await _fcmService.saveTokenToFirestore(uid);
+      _fcmService.listenForTokenRefresh(uid);
+
+      // Handle foreground notifications
+      _fcmService.setupForegroundHandler((message) {
+        debugPrint(
+          '[AuthProvider] Foreground notification: ${message.notification?.title}',
+        );
+      });
+    } catch (e) {
+      debugPrint('[AuthProvider] FCM setup error: $e');
+    }
   }
 
   String _parseAuthError(String code) {

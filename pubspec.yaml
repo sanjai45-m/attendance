@@ -28,6 +28,9 @@ dependencies:
   # HTTP (Telegram)
   http: ^1.3.0
 
+  # FCM v1 API auth
+  googleapis_auth: ^1.6.0
+
   # Utilities
   intl: ^0.20.2
   path_provider: ^2.1.5
@@ -44,3 +47,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/

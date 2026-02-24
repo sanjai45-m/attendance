@@ -8,10 +8,12 @@ import 'package:attendance/core/enums/attendance_status.dart';
 import 'package:attendance/core/utils/date_utils.dart';
 import 'package:attendance/services/firestore_service.dart';
 import 'package:attendance/services/telegram_service.dart';
+import 'package:attendance/services/fcm_service.dart';
 
 class AttendanceProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   final TelegramService _telegramService = TelegramService();
+  final FCMService _fcmService = FCMService();
 
   AttendanceModel? _todayAttendance;
   List<AttendanceModel> _myHistory = [];
@@ -105,9 +107,15 @@ class AttendanceProvider extends ChangeNotifier {
       _todayAttendance = attendance;
 
       // Send Telegram notification
-      debugPrint('[AttendanceProvider] Telegram configured: ${settings.isTelegramConfigured}');
-      debugPrint('[AttendanceProvider] Bot token: ${settings.telegramBotToken.isNotEmpty ? "SET" : "EMPTY"}');
-      debugPrint('[AttendanceProvider] Chat ID: ${settings.telegramChatId.isNotEmpty ? "SET" : "EMPTY"}');
+      debugPrint(
+        '[AttendanceProvider] Telegram configured: ${settings.isTelegramConfigured}',
+      );
+      debugPrint(
+        '[AttendanceProvider] Bot token: ${settings.telegramBotToken.isNotEmpty ? "SET" : "EMPTY"}',
+      );
+      debugPrint(
+        '[AttendanceProvider] Chat ID: ${settings.telegramChatId.isNotEmpty ? "SET" : "EMPTY"}',
+      );
       if (settings.isTelegramConfigured) {
         final message = _telegramService.formatPunchInMessage(
           employeeName: employeeName,
@@ -122,6 +130,13 @@ class AttendanceProvider extends ChangeNotifier {
         );
         debugPrint('[AttendanceProvider] Telegram message sent!');
       }
+
+      // Send FCM push notification to admins
+      await _fcmService.sendPunchNotification(
+        title: '✅ Punch In',
+        body:
+            '$employeeName ($employeeId) punched in at ${AppDateUtils.toTimeString(now)}',
+      );
 
       _isPunching = false;
       notifyListeners();
@@ -194,6 +209,13 @@ class AttendanceProvider extends ChangeNotifier {
         );
       }
 
+      // Send FCM push notification to admins
+      await _fcmService.sendPunchNotification(
+        title: '🔴 Punch Out',
+        body:
+            '$employeeName ($employeeId) punched out at ${AppDateUtils.toTimeString(now)} — Worked ${_todayAttendance!.totalHoursFormatted}',
+      );
+
       _isPunching = false;
       notifyListeners();
       return true;
@@ -209,19 +231,23 @@ class AttendanceProvider extends ChangeNotifier {
   void loadMyHistory(String uid) {
     _historySubscription?.cancel();
     if (FirebaseAuth.instance.currentUser == null) {
-      debugPrint('[AttendanceProvider] Skipping loadMyHistory — not authenticated');
+      debugPrint(
+        '[AttendanceProvider] Skipping loadMyHistory — not authenticated',
+      );
       return;
     }
-    _historySubscription = _firestoreService.streamMyAttendance(uid).listen(
-      (list) {
-        _myHistory = list;
-        notifyListeners();
-      },
-      onError: (e) {
-        _error = 'Failed to load attendance history.';
-        notifyListeners();
-      },
-    );
+    _historySubscription = _firestoreService
+        .streamMyAttendance(uid)
+        .listen(
+          (list) {
+            _myHistory = list;
+            notifyListeners();
+          },
+          onError: (e) {
+            _error = 'Failed to load attendance history.';
+            notifyListeners();
+          },
+        );
   }
 
   /// Stream daily attendance (admin)
@@ -230,8 +256,12 @@ class AttendanceProvider extends ChangeNotifier {
     _dailySubscription?.cancel();
 
     final currentUser = FirebaseAuth.instance.currentUser;
-    debugPrint('[AttendanceProvider] loadDailyAttendance called for date: $date');
-    debugPrint('[AttendanceProvider] Current auth user: ${currentUser?.uid ?? "NULL"}');
+    debugPrint(
+      '[AttendanceProvider] loadDailyAttendance called for date: $date',
+    );
+    debugPrint(
+      '[AttendanceProvider] Current auth user: ${currentUser?.uid ?? "NULL"}',
+    );
 
     if (currentUser == null) {
       debugPrint('[AttendanceProvider] Skipping — not authenticated');
@@ -244,26 +274,30 @@ class AttendanceProvider extends ChangeNotifier {
         .where('date', isEqualTo: date)
         .get()
         .then((snapshot) {
-      debugPrint('[AttendanceProvider] GET query succeeded! Found ${snapshot.docs.length} docs');
-      // If GET works, set up the stream
-      _dailySubscription =
-          _firestoreService.streamAttendanceByDate(date).listen(
-        (list) {
-          _dailyAttendance = list;
-          notifyListeners();
-        },
-        onError: (e) {
-          debugPrint('[AttendanceProvider] Stream error: $e');
+          debugPrint(
+            '[AttendanceProvider] GET query succeeded! Found ${snapshot.docs.length} docs',
+          );
+          // If GET works, set up the stream
+          _dailySubscription = _firestoreService
+              .streamAttendanceByDate(date)
+              .listen(
+                (list) {
+                  _dailyAttendance = list;
+                  notifyListeners();
+                },
+                onError: (e) {
+                  debugPrint('[AttendanceProvider] Stream error: $e');
+                  _error = 'Failed to load daily attendance.';
+                  notifyListeners();
+                },
+              );
+        })
+        .catchError((e) {
+          debugPrint('[AttendanceProvider] GET query FAILED: $e');
+          debugPrint('[AttendanceProvider] Error type: ${e.runtimeType}');
           _error = 'Failed to load daily attendance.';
           notifyListeners();
-        },
-      );
-    }).catchError((e) {
-      debugPrint('[AttendanceProvider] GET query FAILED: $e');
-      debugPrint('[AttendanceProvider] Error type: ${e.runtimeType}');
-      _error = 'Failed to load daily attendance.';
-      notifyListeners();
-    });
+        });
   }
 
   /// Load report data (admin)
