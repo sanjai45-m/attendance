@@ -14,12 +14,17 @@ class AppSettingsModel {
   });
 
   factory AppSettingsModel.fromMap(Map<String, dynamic> map) {
+    final rawThreshold = map['lateThresholdMinutes'];
+    final threshold = rawThreshold is int
+        ? rawThreshold
+        : (rawThreshold is String ? int.tryParse(rawThreshold) ?? 15 : 15);
+
     return AppSettingsModel(
-      lateThresholdMinutes: map['lateThresholdMinutes'] ?? 15,
-      workStartTime: map['workStartTime'] ?? '09:00',
-      telegramBotToken: map['telegramBotToken'] ?? '',
-      telegramChatId: map['telegramChatId'] ?? '',
-      fcmServerKey: map['fcmServerKey'] ?? '',
+      lateThresholdMinutes: threshold,
+      workStartTime: map['workStartTime']?.toString() ?? '09:00',
+      telegramBotToken: map['telegramBotToken']?.toString() ?? '',
+      telegramChatId: map['telegramChatId']?.toString() ?? '',
+      fcmServerKey: map['fcmServerKey']?.toString() ?? '',
     );
   }
 
