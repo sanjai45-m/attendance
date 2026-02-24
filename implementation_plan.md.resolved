@@ -1,0 +1,589 @@
+# Employee Attendance Management System — Implementation Plan
+
+## Overview
+
+A production-ready **Employee Attendance Management System** built with Flutter (frontend) + Firebase (backend). Supports Admin and Employee roles with punch-in/out tracking, attendance reporting (Excel export), and real-time Telegram notifications — all on **free-tier services**. State management uses **Provider**.
+
+---
+
+## 1. System Architecture
+
+```mermaid
+graph TB
+    subgraph "Flutter App"
+        UI["Screens (Admin / Employee)"]
+        RP["ChangeNotifier Providers"]
+        SVC["Service Layer"]
+        MDL["Models"]
+    end
+
+    subgraph "Firebase"
+        FA["Firebase Auth"]
+        FS["Cloud Firestore"]
+        FCM["Firebase Cloud Messaging"]
+    end
+
+    subgraph "External"
+        TG["Telegram Bot API"]
+    end
+
+    UI --> RP --> SVC
+    SVC --> FA
+    SVC --> FS
+    SVC --> FCM
+    SVC --> TG
+    MDL -.-> SVC
+```
+
+| Layer | Responsibility |
+|---|---|
+| **Screens** | Flutter widgets — forms, dashboards, lists |
+| **Provider (ChangeNotifiers)** | State management, async data, caching |
+| **Service Layer** | Abstracts Firebase SDK + HTTP calls (Telegram) |
+| **Models** | Dart data classes with `fromJson` / `toJson` |
+| **Firebase** | Auth, Firestore database, push notifications |
+| **Telegram Bot API** | Free push notifications via HTTP POST |
+
+---
+
+## 2. Firestore Data Structure
+
+### Collection: `users`
+
+```
+users/{uid}
+├── name: string
+├── email: string
+├── phone: string
+├── employeeId: string          // e.g. "EMP-001"
+├── department: string
+├── role: string                // "admin" | "employee"
+├── createdAt: timestamp
+└── updatedAt: timestamp
+```
+
+### Collection: `attendance`
+
+```
+attendance/{autoId}
+├── uid: string                 // FK → users/{uid}
+├── employeeId: string          // denormalized for queries
+├── employeeName: string        // denormalized for display
+├── date: string                // "2026-02-23" — partition key
+├── punchIn: timestamp | null
+├── punchOut: timestamp | null
+├── totalHours: double | null
+├── status: string              // "present" | "absent" | "late"
+├── createdAt: timestamp
+└── updatedAt: timestamp
+```
+
+> **Compound index**: `(date ASC, uid ASC)` for the admin daily dashboard.
+
+### Collection: `settings`
+
+```
+settings/app
+├── lateThresholdMinutes: int   // e.g. 15 (punch-in later than 09:15 → late)
+├── workStartTime: string       // "09:00"
+├── telegramBotToken: string
+├── telegramChatId: string
+```
+
+---
+
+## 3. Folder Structure (Clean Architecture)
+
+```
+d:\attendance\
+├── android/
+├── ios/
+├── lib/
+│   ├── main.dart                         // Firebase init, MultiProvider, runApp
+│   ├── app.dart                          // MaterialApp + GoRouter
+│   │
+│   ├── core/
+│   │   ├── constants/
+│   │   │   ├── app_colors.dart
+│   │   │   ├── app_strings.dart
+│   │   │   └── firestore_paths.dart
+│   │   ├── enums/
+│   │   │   ├── user_role.dart
+│   │   │   └── attendance_status.dart
+│   │   ├── utils/
+│   │   │   ├── date_utils.dart
+│   │   │   ├── validators.dart
+│   │   │   └── excel_exporter.dart
+│   │   └── theme/
+│   │       └── app_theme.dart
+│   │
+│   ├── models/
+│   │   ├── user_model.dart
+│   │   ├── attendance_model.dart
+│   │   └── app_settings_model.dart
+│   │
+│   ├── services/
+│   │   ├── auth_service.dart
+│   │   ├── firestore_service.dart
+│   │   ├── telegram_service.dart
+│   │   ├── fcm_service.dart
+│   │   └── excel_service.dart
+│   │
+│   ├── providers/                         // ChangeNotifier classes
+│   │   ├── auth_provider.dart
+│   │   ├── user_provider.dart
+│   │   ├── attendance_provider.dart
+│   │   └── settings_provider.dart
+│   │
+│   ├── screens/
+│   │   ├── auth/
+│   │   │   └── login_screen.dart
+│   │   ├── admin/
+│   │   │   ├── admin_dashboard_screen.dart
+│   │   │   ├── create_employee_screen.dart
+│   │   │   ├── employee_list_screen.dart
+│   │   │   ├── edit_employee_screen.dart
+│   │   │   ├── attendance_dashboard_screen.dart
+│   │   │   └── reports_screen.dart
+│   │   └── employee/
+│   │       ├── employee_dashboard_screen.dart
+│   │       ├── punch_screen.dart
+│   │       └── attendance_history_screen.dart
+│   │
+│   ├── widgets/
+│   │   ├── app_drawer.dart
+│   │   ├── attendance_card.dart
+│   │   ├── employee_card.dart
+│   │   ├── status_badge.dart
+│   │   ├── custom_text_field.dart
+│   │   └── loading_overlay.dart
+│   │
+│   └── routing/
+│       ├── app_router.dart
+│       └── route_guards.dart
+│
+├── pubspec.yaml
+├── firebase.json
+└── firestore.rules
+```
+
+---
+
+## 4. State Management — Provider
+
+### Architecture
+
+Each feature area has a dedicated `ChangeNotifier` class registered via `MultiProvider` at the app root.
+
+```mermaid
+graph LR
+    subgraph "ChangeNotifiers"
+        A1["AuthProvider"]
+        A2["UserProvider"]
+        D1["EmployeeProvider"]
+        D2["AttendanceProvider"]
+        D3["SettingsProvider"]
+    end
+
+    subgraph "Widgets"
+        W1["Consumer / context.watch"]
+        W2["Selector"]
+    end
+
+    A1 --> A2
+    A2 --> D1
+    A2 --> D2
+    W1 --> A1
+    W1 --> D1
+    W2 --> D2
+```
+
+| ChangeNotifier | Responsibility |
+|---|---|
+| `AuthProvider` | Wraps `FirebaseAuth`, exposes `currentUser`, `login()`, `logout()`, `isAdmin` |
+| `UserProvider` | CRUD on `users` collection, employee list stream |
+| `EmployeeProvider` | Dedicated notifier for employee list filtering & management (Admin) |
+| `AttendanceProvider` | Punch-in/out, daily attendance stream, history queries, date filtering |
+| `SettingsProvider` | App settings (work start time, late threshold, Telegram config) |
+
+### Registration in `main.dart`
+
+```dart
+runApp(
+  MultiProvider(
+    providers: [
+      ChangeNotifierProvider(create: (_) => AuthProvider()),
+      ChangeNotifierProxyProvider<AuthProvider, UserProvider>(
+        create: (_) => UserProvider(),
+        update: (_, auth, userProv) => userProv!..updateAuth(auth),
+      ),
+      ChangeNotifierProxyProvider<AuthProvider, AttendanceProvider>(
+        create: (_) => AttendanceProvider(),
+        update: (_, auth, attProv) => attProv!..updateAuth(auth),
+      ),
+      ChangeNotifierProvider(create: (_) => SettingsProvider()),
+    ],
+    child: const App(),
+  ),
+);
+```
+
+---
+
+## 5. Authentication Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant App as Flutter App
+    participant FA as Firebase Auth
+    participant FS as Firestore
+
+    U->>App: Enter email + password
+    App->>FA: signInWithEmailAndPassword()
+    FA-->>App: User credential (uid)
+    App->>FS: Get users/{uid}
+    FS-->>App: UserModel (role: admin|employee)
+    App->>App: Route to Admin Dashboard or Employee Dashboard
+```
+
+- **Admin accounts** are seeded manually via Firebase Console or a one-time setup screen.
+- **Employee accounts** are created by Admin → `AuthProvider` calls `FirebaseAuth.createUserWithEmailAndPassword()` using a secondary `FirebaseApp` instance (so the Admin stays logged in), then `UserProvider` writes the user doc to Firestore.
+- **Route guards** in GoRouter redirect unauthenticated users to `/login` and restrict admin routes from employee accounts.
+
+---
+
+## 6. Attendance Logic
+
+### Punch-In Flow
+1. Employee taps **Punch In**.
+2. App writes a new `attendance` doc with `punchIn = Timestamp.now()`, `punchOut = null`.
+3. Status is calculated: if `punchIn` time > `workStartTime + lateThresholdMinutes` → `"late"`, else `"present"`.
+4. Telegram notification is sent via HTTP POST.
+
+### Punch-Out Flow
+1. Employee taps **Punch Out**.
+2. App updates the existing doc: `punchOut = Timestamp.now()`.
+3. `totalHours` is calculated as `(punchOut - punchIn).inMinutes / 60.0`.
+4. Telegram notification is sent.
+
+### Guard Rails
+- Prevent double punch-in on the same day (query for existing doc with today's date + uid).
+- Prevent punch-out without a prior punch-in.
+- Prevent punch-out if already punched out.
+
+---
+
+## 7. Excel Export Implementation
+
+### Package: `syncfusion_flutter_xlsio`
+
+```dart
+// Pseudocode
+final Workbook workbook = Workbook();
+final Worksheet sheet = workbook.worksheets[0];
+
+// Headers
+sheet.getRangeByIndex(1, 1).setText('Employee ID');
+sheet.getRangeByIndex(1, 2).setText('Name');
+sheet.getRangeByIndex(1, 3).setText('Date');
+sheet.getRangeByIndex(1, 4).setText('Punch In');
+sheet.getRangeByIndex(1, 5).setText('Punch Out');
+sheet.getRangeByIndex(1, 6).setText('Total Hours');
+sheet.getRangeByIndex(1, 7).setText('Status');
+
+// Populate rows from List<AttendanceModel> ...
+
+final List<int> bytes = workbook.saveAsStream();
+workbook.dispose();
+
+// Save to device
+final directory = await getApplicationDocumentsDirectory();
+final file = File('${directory.path}/attendance_report.xlsx');
+await file.writeAsBytes(bytes);
+
+// Share or open
+await OpenFilex.open(file.path);
+```
+
+**Filters supported**: date range picker (`showDateRangePicker`) + employee dropdown → Firestore compound query → export matching docs.
+
+---
+
+## 8. Telegram Bot Integration
+
+### Setup Steps
+1. Message `@BotFather` on Telegram → `/newbot` → get **Bot Token**.
+2. Create a Telegram group/channel → add the bot → get the **Chat ID** via `https://api.telegram.org/bot<TOKEN>/getUpdates`.
+3. Store `botToken` and `chatId` in Firestore `settings/app` doc.
+
+### Sending Notifications
+
+```dart
+class TelegramService {
+  Future<void> sendMessage(String botToken, String chatId, String text) async {
+    final url = Uri.parse(
+      'https://api.telegram.org/bot$botToken/sendMessage',
+    );
+    await http.post(url, body: {
+      'chat_id': chatId,
+      'text': text,
+      'parse_mode': 'Markdown',
+    });
+  }
+}
+```
+
+**Message templates**:
+- Punch In: `✅ *John Doe* (EMP-001) punched IN at 09:02 AM`
+- Punch Out: `🔴 *John Doe* (EMP-001) punched OUT at 06:15 PM — Worked 9.2 hrs`
+
+> **Cost**: $0 — Telegram Bot API is completely free with no rate limits for small teams.
+
+---
+
+## 9. FCM Push Notifications
+
+| Step | Detail |
+|---|---|
+| 1 | Add `firebase_messaging` package |
+| 2 | Request notification permission on app start |
+| 3 | Store device FCM token in `users/{uid}.fcmToken` |
+| 4 | On punch-in/out, optionally send a push via the FCM HTTP v1 API (requires a service account key, called from the Flutter app or a Cloud Function) |
+
+> For the free tier, we'll send Telegram messages directly from the client. FCM is optional and can be layered on with Cloud Functions later.
+
+---
+
+## 10. Security Best Practices
+
+### Firestore Security Rules
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users collection
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Attendance collection
+    match /attendance/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid;
+    }
+
+    // Settings
+    match /settings/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+  }
+}
+```
+
+### Additional Security Measures
+- Passwords ≥ 8 characters enforced on the UI.
+- Telegram bot token stored in Firestore (only admin-readable/writable), **not** hardcoded in source.
+- Firebase App Check can be enabled (free tier) to prevent unauthorized API access.
+- No sensitive data stored on-device beyond Firebase auth tokens.
+
+---
+
+## 11. Suggested Flutter Packages
+
+| Package | Purpose | Free? |
+|---|---|---|
+| `firebase_core` | Firebase init | ✅ |
+| `firebase_auth` | Authentication | ✅ |
+| `cloud_firestore` | Database | ✅ |
+| `firebase_messaging` | Push notifications | ✅ |
+| `provider` | State management (ChangeNotifier) | ✅ |
+| `go_router` | Declarative routing | ✅ |
+| `syncfusion_flutter_xlsio` | Excel export (community license) | ✅ |
+| `http` | Telegram API calls | ✅ |
+| `intl` | Date/time formatting | ✅ |
+| `path_provider` | File system access | ✅ |
+| `open_filex` | Open exported files | ✅ |
+| `google_fonts` | Premium typography | ✅ |
+| `flutter_animate` | Micro-animations | ✅ |
+| `shimmer` | Loading skeleton UI | ✅ |
+| `fl_chart` | Dashboard charts | ✅ |
+
+---
+
+## 12. API Flow Diagrams
+
+### Punch-In Flow
+
+```mermaid
+sequenceDiagram
+    participant E as Employee
+    participant App as Flutter App
+    participant FS as Firestore
+    participant TG as Telegram Bot
+
+    E->>App: Tap "Punch In"
+    App->>FS: Query attendance (date=today, uid=me)
+    FS-->>App: [] (no record)
+    App->>App: Calculate status (present/late)
+    App->>FS: Create attendance doc
+    FS-->>App: Success
+    App->>TG: POST /sendMessage (punch-in notification)
+    TG-->>App: 200 OK
+    App->>E: Show "Punched In at 09:02 AM"
+```
+
+### Admin Export Flow
+
+```mermaid
+sequenceDiagram
+    participant A as Admin
+    participant App as Flutter App
+    participant FS as Firestore
+
+    A->>App: Select date range + employee filter
+    App->>FS: Query attendance (date range, optional uid)
+    FS-->>App: List<AttendanceModel>
+    App->>App: Generate Excel workbook
+    App->>App: Save to device storage
+    App->>A: Open / Share .xlsx file
+```
+
+---
+
+## Proposed Changes
+
+### [NEW] Flutter Project Scaffold
+
+#### [NEW] [pubspec.yaml](file:///d:/attendance/pubspec.yaml)
+- Project metadata, all dependencies listed in §11 (uses `provider` instead of `riverpod`).
+
+#### [NEW] [lib/main.dart](file:///d:/attendance/lib/main.dart)
+- Firebase initialization, `MultiProvider` with all ChangeNotifiers, run `App` widget.
+
+#### [NEW] [lib/app.dart](file:///d:/attendance/lib/app.dart)
+- `MaterialApp.router` with `GoRouter`, app theme.
+
+---
+
+### Core Layer
+
+#### [NEW] [lib/core/constants/app_colors.dart](file:///d:/attendance/lib/core/constants/app_colors.dart)
+#### [NEW] [lib/core/constants/app_strings.dart](file:///d:/attendance/lib/core/constants/app_strings.dart)
+#### [NEW] [lib/core/constants/firestore_paths.dart](file:///d:/attendance/lib/core/constants/firestore_paths.dart)
+#### [NEW] [lib/core/enums/user_role.dart](file:///d:/attendance/lib/core/enums/user_role.dart)
+#### [NEW] [lib/core/enums/attendance_status.dart](file:///d:/attendance/lib/core/enums/attendance_status.dart)
+#### [NEW] [lib/core/utils/date_utils.dart](file:///d:/attendance/lib/core/utils/date_utils.dart)
+#### [NEW] [lib/core/utils/validators.dart](file:///d:/attendance/lib/core/utils/validators.dart)
+#### [NEW] [lib/core/utils/excel_exporter.dart](file:///d:/attendance/lib/core/utils/excel_exporter.dart)
+#### [NEW] [lib/core/theme/app_theme.dart](file:///d:/attendance/lib/core/theme/app_theme.dart)
+
+---
+
+### Models
+
+#### [NEW] [lib/models/user_model.dart](file:///d:/attendance/lib/models/user_model.dart)
+#### [NEW] [lib/models/attendance_model.dart](file:///d:/attendance/lib/models/attendance_model.dart)
+#### [NEW] [lib/models/app_settings_model.dart](file:///d:/attendance/lib/models/app_settings_model.dart)
+
+---
+
+### Services
+
+#### [NEW] [lib/services/auth_service.dart](file:///d:/attendance/lib/services/auth_service.dart)
+#### [NEW] [lib/services/firestore_service.dart](file:///d:/attendance/lib/services/firestore_service.dart)
+#### [NEW] [lib/services/telegram_service.dart](file:///d:/attendance/lib/services/telegram_service.dart)
+#### [NEW] [lib/services/fcm_service.dart](file:///d:/attendance/lib/services/fcm_service.dart)
+#### [NEW] [lib/services/excel_service.dart](file:///d:/attendance/lib/services/excel_service.dart)
+
+---
+
+### Providers
+
+#### [NEW] [lib/providers/auth_provider.dart](file:///d:/attendance/lib/providers/auth_provider.dart)
+#### [NEW] [lib/providers/user_provider.dart](file:///d:/attendance/lib/providers/user_provider.dart)
+#### [NEW] [lib/providers/attendance_provider.dart](file:///d:/attendance/lib/providers/attendance_provider.dart)
+#### [NEW] [lib/providers/settings_provider.dart](file:///d:/attendance/lib/providers/settings_provider.dart)
+
+---
+
+### Screens — Auth
+
+#### [NEW] [lib/screens/auth/login_screen.dart](file:///d:/attendance/lib/screens/auth/login_screen.dart)
+
+### Screens — Admin
+
+#### [NEW] [lib/screens/admin/admin_dashboard_screen.dart](file:///d:/attendance/lib/screens/admin/admin_dashboard_screen.dart)
+#### [NEW] [lib/screens/admin/create_employee_screen.dart](file:///d:/attendance/lib/screens/admin/create_employee_screen.dart)
+#### [NEW] [lib/screens/admin/employee_list_screen.dart](file:///d:/attendance/lib/screens/admin/employee_list_screen.dart)
+#### [NEW] [lib/screens/admin/edit_employee_screen.dart](file:///d:/attendance/lib/screens/admin/edit_employee_screen.dart)
+#### [NEW] [lib/screens/admin/attendance_dashboard_screen.dart](file:///d:/attendance/lib/screens/admin/attendance_dashboard_screen.dart)
+#### [NEW] [lib/screens/admin/reports_screen.dart](file:///d:/attendance/lib/screens/admin/reports_screen.dart)
+
+### Screens — Employee
+
+#### [NEW] [lib/screens/employee/employee_dashboard_screen.dart](file:///d:/attendance/lib/screens/employee/employee_dashboard_screen.dart)
+#### [NEW] [lib/screens/employee/punch_screen.dart](file:///d:/attendance/lib/screens/employee/punch_screen.dart)
+#### [NEW] [lib/screens/employee/attendance_history_screen.dart](file:///d:/attendance/lib/screens/employee/attendance_history_screen.dart)
+
+---
+
+### Widgets
+
+#### [NEW] [lib/widgets/app_drawer.dart](file:///d:/attendance/lib/widgets/app_drawer.dart)
+#### [NEW] [lib/widgets/attendance_card.dart](file:///d:/attendance/lib/widgets/attendance_card.dart)
+#### [NEW] [lib/widgets/employee_card.dart](file:///d:/attendance/lib/widgets/employee_card.dart)
+#### [NEW] [lib/widgets/status_badge.dart](file:///d:/attendance/lib/widgets/status_badge.dart)
+#### [NEW] [lib/widgets/custom_text_field.dart](file:///d:/attendance/lib/widgets/custom_text_field.dart)
+#### [NEW] [lib/widgets/loading_overlay.dart](file:///d:/attendance/lib/widgets/loading_overlay.dart)
+
+---
+
+### Routing
+
+#### [NEW] [lib/routing/app_router.dart](file:///d:/attendance/lib/routing/app_router.dart)
+#### [NEW] [lib/routing/route_guards.dart](file:///d:/attendance/lib/routing/route_guards.dart)
+
+---
+
+### Firebase Config
+
+#### [NEW] [firestore.rules](file:///d:/attendance/firestore.rules)
+- Security rules as described in §10.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+
+Since this is a new Flutter project, there are no existing tests. We will verify through:
+
+1. **Flutter analyze** — run `flutter analyze` to catch lint and type errors:
+   ```
+   cd d:\attendance && flutter analyze
+   ```
+
+2. **Build verification** — ensure the project compiles:
+   ```
+   cd d:\attendance && flutter build apk --debug
+   ```
+
+### Manual Verification
+
+1. **Login Flow**: Launch the app → sign in with admin credentials → verify redirect to Admin Dashboard. Sign in with employee credentials → verify redirect to Employee Dashboard.
+2. **Employee CRUD**: Admin → Create Employee → fill form → submit → verify employee appears in List. Edit → change department → save → verify update.
+3. **Punch In/Out**: Employee → tap Punch In → verify timestamp recorded in Firestore. Tap Punch Out → verify total hours calculated.
+4. **Telegram**: After punch-in → check the Telegram group/channel for the notification message.
+5. **Excel Export**: Admin → Reports → select date range → tap Export → verify `.xlsx` file opens with correct data.
+
+> [!IMPORTANT]
+> The user must set up a Firebase project and configure `google-services.json` (Android) / `GoogleService-Info.plist` (iOS) before the app can run. The Telegram Bot Token and Chat ID must also be configured in Firestore `settings/app` document.
