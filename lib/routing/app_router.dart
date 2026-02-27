@@ -9,9 +9,15 @@ import 'package:attendance/screens/admin/employee_list_screen.dart';
 import 'package:attendance/screens/admin/edit_employee_screen.dart';
 import 'package:attendance/screens/admin/attendance_dashboard_screen.dart';
 import 'package:attendance/screens/admin/reports_screen.dart';
+import 'package:attendance/screens/admin/overtime_report_screen.dart';
+import 'package:attendance/screens/admin/admin_leave_requests_screen.dart';
+import 'package:attendance/screens/admin/admin_notifications_screen.dart';
 import 'package:attendance/screens/employee/employee_dashboard_screen.dart';
 import 'package:attendance/screens/employee/punch_screen.dart';
 import 'package:attendance/screens/employee/attendance_history_screen.dart';
+import 'package:attendance/screens/employee/apply_leave_screen.dart';
+import 'package:attendance/screens/employee/employee_notifications_screen.dart';
+import 'package:attendance/screens/admin/settings_screen.dart';
 import 'package:attendance/core/constants/app_colors.dart';
 
 class AppRouter {
@@ -79,6 +85,22 @@ class AppRouter {
               path: 'reports',
               builder: (context, state) => const ReportsScreen(),
             ),
+            GoRoute(
+              path: 'overtime-reports',
+              builder: (context, state) => const OvertimeReportScreen(),
+            ),
+            GoRoute(
+              path: 'leave-requests',
+              builder: (context, state) => const AdminLeaveRequestsScreen(),
+            ),
+            GoRoute(
+              path: 'notifications',
+              builder: (context, state) => const AdminNotificationsScreen(),
+            ),
+            GoRoute(
+              path: 'settings',
+              builder: (context, state) => const SettingsScreen(),
+            ),
           ],
         ),
 
@@ -94,6 +116,14 @@ class AppRouter {
             GoRoute(
               path: 'history',
               builder: (context, state) => const AttendanceHistoryScreen(),
+            ),
+            GoRoute(
+              path: 'apply-leave',
+              builder: (context, state) => const ApplyLeaveScreen(),
+            ),
+            GoRoute(
+              path: 'notifications',
+              builder: (context, state) => const EmployeeNotificationsScreen(),
             ),
           ],
         ),

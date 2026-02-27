@@ -6,6 +6,8 @@ import 'package:attendance/providers/auth_provider.dart';
 import 'package:attendance/providers/user_provider.dart';
 import 'package:attendance/providers/attendance_provider.dart';
 import 'package:attendance/providers/settings_provider.dart';
+import 'package:attendance/providers/leave_provider.dart';
+import 'package:attendance/providers/notification_provider.dart';
 import 'package:attendance/app.dart';
 
 /// Top-level background message handler (must be outside any class)
@@ -29,6 +31,8 @@ void main() async {
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider(create: (_) => AttendanceProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider(create: (_) => LeaveProvider()),
+        ChangeNotifierProvider(create: (_) => NotificationProvider()),
       ],
       child: const App(),
     ),

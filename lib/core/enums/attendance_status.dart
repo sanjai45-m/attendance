@@ -1,7 +1,8 @@
 enum AttendanceStatus {
   present,
   absent,
-  late_;
+  late_,
+  onLeave; // <-- Added
 
   String get displayName {
     switch (this) {
@@ -11,6 +12,8 @@ enum AttendanceStatus {
         return 'Absent';
       case AttendanceStatus.late_:
         return 'Late';
+      case AttendanceStatus.onLeave:
+        return 'On Leave';
     }
   }
 
@@ -22,6 +25,8 @@ enum AttendanceStatus {
         return AttendanceStatus.absent;
       case 'late':
         return AttendanceStatus.late_;
+      case 'on_leave':
+        return AttendanceStatus.onLeave;
       default:
         return AttendanceStatus.absent;
     }
@@ -35,6 +40,8 @@ enum AttendanceStatus {
         return 'absent';
       case AttendanceStatus.late_:
         return 'late';
+      case AttendanceStatus.onLeave:
+        return 'on_leave';
     }
   }
 }

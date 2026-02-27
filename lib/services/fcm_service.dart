@@ -171,6 +171,66 @@ class FCMService {
     }
   }
 
+  /// Send push notification to a specific user using FCM v1 API
+  Future<void> sendUserNotification({
+    required String uid,
+    required String title,
+    required String body,
+  }) async {
+    try {
+      final doc = await _firestore
+          .collection(FirestorePaths.users)
+          .doc(uid)
+          .get();
+      final token = doc.data()?['fcmToken'] as String?;
+      if (token == null || token.isEmpty) {
+        debugPrint('[FCMService] No token found for user $uid, skipping push');
+        return;
+      }
+
+      final accessToken = await _getAccessToken();
+      if (accessToken == null) return;
+
+      final projectId = await _getProjectId();
+      if (projectId == null) return;
+
+      final url = Uri.parse(
+        'https://fcm.googleapis.com/v1/projects/$projectId/messages:send',
+      );
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode({
+          'message': {
+            'token': token,
+            'notification': {'title': title, 'body': body},
+            'android': {
+              'priority': 'HIGH',
+              'notification': {
+                'channel_id': 'attendance_notifications',
+                'sound': 'default',
+              },
+            },
+          },
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('[FCMService] User push notification sent successfully');
+      } else {
+        debugPrint(
+          '[FCMService] User push failed (${response.statusCode}): ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('[FCMService] Error sending user push: $e');
+    }
+  }
+
   /// Setup foreground message handler
   void setupForegroundHandler(void Function(RemoteMessage) handler) {
     FirebaseMessaging.onMessage.listen(handler);

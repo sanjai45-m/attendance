@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:attendance/models/user_model.dart';
 import 'package:attendance/models/attendance_model.dart';
 import 'package:attendance/models/app_settings_model.dart';
+import 'package:attendance/models/leave_request_model.dart';
+import 'package:attendance/models/app_notification_model.dart';
 import 'package:attendance/core/constants/firestore_paths.dart';
 
 class FirestoreService {
@@ -118,19 +120,17 @@ class FirestoreService {
     required String endDate,
     String? uid,
   }) async {
+    // 1. Only query Firestore based on the Date range
     Query query = _firestore
         .collection(FirestorePaths.attendance)
         .where(FirestorePaths.dateField, isGreaterThanOrEqualTo: startDate)
-        .where(FirestorePaths.dateField, isLessThanOrEqualTo: endDate);
-
-    if (uid != null && uid.isNotEmpty) {
-      query = query.where(FirestorePaths.uidField, isEqualTo: uid);
-    }
-
-    query = query.orderBy(FirestorePaths.dateField, descending: false);
+        .where(FirestorePaths.dateField, isLessThanOrEqualTo: endDate)
+        .orderBy(FirestorePaths.dateField, descending: false);
 
     final snapshot = await query.get();
-    return snapshot.docs
+
+    // 2. Map docs to models
+    var results = snapshot.docs
         .map(
           (doc) => AttendanceModel.fromMap(
             doc.data() as Map<String, dynamic>,
@@ -138,6 +138,13 @@ class FirestoreService {
           ),
         )
         .toList();
+
+    // 3. Filter by UID locally to bypass the need for a composite index (date + uid)
+    if (uid != null && uid.isNotEmpty) {
+      results = results.where((e) => e.uid == uid).toList();
+    }
+
+    return results;
   }
 
   // ─── Settings ───────────────────────────────────────────
@@ -177,6 +184,98 @@ class FirestoreService {
         .map((doc) {
           if (!doc.exists) return AppSettingsModel();
           return AppSettingsModel.fromMap(doc.data()!);
+        });
+  }
+
+  // ─── Leave Requests ─────────────────────────────────────
+
+  /// Submit a new leave request
+  Future<String> createLeaveRequest(LeaveRequestModel request) async {
+    final doc = await _firestore
+        .collection(FirestorePaths.leaveRequests)
+        .add(request.toMap());
+    return doc.id;
+  }
+
+  /// Update leave request status (for Admin)
+  Future<void> updateLeaveRequestStatus(String docId, String status) async {
+    await _firestore.collection(FirestorePaths.leaveRequests).doc(docId).update(
+      {'status': status, 'updatedAt': Timestamp.now()},
+    );
+  }
+
+  /// Stream all leave requests (for Admin)
+  Stream<List<LeaveRequestModel>> streamAllLeaveRequests() {
+    return _firestore.collection(FirestorePaths.leaveRequests).snapshots().map((
+      snapshot,
+    ) {
+      final list = snapshot.docs
+          .map((doc) => LeaveRequestModel.fromMap(doc.data(), doc.id))
+          .toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    });
+  }
+
+  /// Stream a specific employee's leave requests
+  Stream<List<LeaveRequestModel>> streamMyLeaveRequests(String uid) {
+    return _firestore
+        .collection(FirestorePaths.leaveRequests)
+        .where('uid', isEqualTo: uid)
+        .snapshots()
+        .map((snapshot) {
+          final list = snapshot.docs
+              .map((doc) => LeaveRequestModel.fromMap(doc.data(), doc.id))
+              .toList();
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return list;
+        });
+  }
+
+  // ─── Notifications ──────────────────────────────────────
+
+  /// Send a notification
+  Future<void> sendNotification(AppNotificationModel notification) async {
+    await _firestore
+        .collection(FirestorePaths.notifications)
+        .add(notification.toMap());
+  }
+
+  /// Mark notification as read
+  Future<void> markNotificationRead(String docId) async {
+    await _firestore.collection(FirestorePaths.notifications).doc(docId).update(
+      {'isRead': true},
+    );
+  }
+
+  /// Mark all notifications as read for a specific user/admin
+  Future<void> markAllNotificationsRead(String targetUid) async {
+    final batch = _firestore.batch();
+    final query = await _firestore
+        .collection(FirestorePaths.notifications)
+        .where('targetUid', isEqualTo: targetUid)
+        .where('isRead', isEqualTo: false)
+        .get();
+
+    for (var doc in query.docs) {
+      batch.update(doc.reference, {'isRead': true});
+    }
+
+    await batch.commit();
+  }
+
+  /// Stream notifications for a specific user (or 'admin')
+  Stream<List<AppNotificationModel>> streamNotifications(String targetUid) {
+    return _firestore
+        .collection(FirestorePaths.notifications)
+        .where('targetUid', isEqualTo: targetUid)
+        .snapshots()
+        .map((snapshot) {
+          final list = snapshot.docs
+              .map((doc) => AppNotificationModel.fromMap(doc.data(), doc.id))
+              .toList();
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return list;
         });
   }
 }

@@ -29,7 +29,11 @@ class AppDateUtils {
   }
 
   /// Check if a time is late based on threshold
-  static bool isLate(DateTime punchIn, String workStartTime, int thresholdMinutes) {
+  static bool isLate(
+    DateTime punchIn,
+    String workStartTime,
+    int thresholdMinutes,
+  ) {
     final parts = workStartTime.split(':');
     final startHour = int.parse(parts[0]);
     final startMinute = int.parse(parts[1]);
@@ -47,4 +51,25 @@ class AppDateUtils {
 
   /// Parse date string "yyyy-MM-dd" to DateTime
   static DateTime parseDate(String dateStr) => _dateFormat.parse(dateStr);
+
+  /// Calculate overtime hours based on punch-out time and configured Work End Time
+  static double calculateOvertime(DateTime punchOut, String workEndTime) {
+    final parts = workEndTime.split(':');
+    final endHour = int.parse(parts[0]);
+    final endMinute = int.parse(parts[1]);
+
+    final endTimeThreshold = DateTime(
+      punchOut.year,
+      punchOut.month,
+      punchOut.day,
+      endHour,
+      endMinute,
+    );
+
+    if (punchOut.isAfter(endTimeThreshold)) {
+      return punchOut.difference(endTimeThreshold).inMinutes / 60.0;
+    }
+
+    return 0.0;
+  }
 }

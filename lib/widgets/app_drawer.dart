@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:attendance/core/constants/app_colors.dart';
 import 'package:attendance/core/constants/app_strings.dart';
 import 'package:attendance/providers/auth_provider.dart';
+import 'package:attendance/providers/notification_provider.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -13,6 +14,7 @@ class AppDrawer extends StatelessWidget {
     final authProvider = context.watch<AuthProvider>();
     final user = authProvider.currentUser;
     final isAdmin = authProvider.isAdmin;
+    final notificationCount = context.watch<NotificationProvider>().unreadCount;
 
     return Drawer(
       child: Column(
@@ -66,8 +68,10 @@ class AppDrawer extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8),
@@ -114,9 +118,34 @@ class AppDrawer extends StatelessWidget {
             ),
             _menuItem(
               context,
+              icon: Icons.access_time_filled_rounded,
+              label: 'Overtime Reports',
+              route: '/admin/overtime-reports',
+            ),
+            _menuItem(
+              context,
+              icon: Icons.event_available_rounded,
+              label: 'Leave Requests',
+              route: '/admin/leave-requests',
+            ),
+            _menuItem(
+              context,
+              icon: Icons.notifications_rounded,
+              label: 'Notifications',
+              route: '/admin/notifications',
+              badgeCount: notificationCount,
+            ),
+            _menuItem(
+              context,
               icon: Icons.description_rounded,
               label: AppStrings.reports,
               route: '/admin/reports',
+            ),
+            _menuItem(
+              context,
+              icon: Icons.settings_rounded,
+              label: 'Settings',
+              route: '/admin/settings',
             ),
           ] else ...[
             _menuItem(
@@ -136,6 +165,19 @@ class AppDrawer extends StatelessWidget {
               icon: Icons.history_rounded,
               label: AppStrings.attendanceHistory,
               route: '/employee/history',
+            ),
+            _menuItem(
+              context,
+              icon: Icons.event_available_rounded,
+              label: 'Apply for Leave',
+              route: '/employee/apply-leave',
+            ),
+            _menuItem(
+              context,
+              icon: Icons.notifications_rounded,
+              label: 'Notifications',
+              route: '/employee/notifications',
+              badgeCount: notificationCount,
             ),
           ],
 
@@ -164,6 +206,7 @@ class AppDrawer extends StatelessWidget {
     required String route,
     VoidCallback? onTap,
     Color? iconColor,
+    int? badgeCount,
   }) {
     return ListTile(
       leading: Icon(icon, color: iconColor ?? AppColors.primary, size: 22),
@@ -175,14 +218,30 @@ class AppDrawer extends StatelessWidget {
           fontSize: 14,
         ),
       ),
-      onTap: onTap ??
+      trailing: badgeCount != null && badgeCount > 0
+          ? Container(
+              padding: const EdgeInsets.all(6),
+              decoration: const BoxDecoration(
+                color: AppColors.error,
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                badgeCount.toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            )
+          : null,
+      onTap:
+          onTap ??
           () {
             Navigator.pop(context);
             context.go(route);
           },
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       contentPadding: const EdgeInsets.symmetric(horizontal: 20),
     );
   }
@@ -205,9 +264,7 @@ class AppDrawer extends StatelessWidget {
               context.read<AuthProvider>().logout();
               context.go('/login');
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text(AppStrings.logout),
           ),
         ],

@@ -7,6 +7,7 @@ import 'package:attendance/core/utils/date_utils.dart';
 import 'package:attendance/providers/auth_provider.dart';
 import 'package:attendance/providers/user_provider.dart';
 import 'package:attendance/providers/attendance_provider.dart';
+import 'package:attendance/providers/notification_provider.dart';
 import 'package:attendance/widgets/app_drawer.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -23,8 +24,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<UserProvider>().loadEmployees();
       context.read<AttendanceProvider>().loadDailyAttendance(
-            AppDateUtils.todayString(),
-          );
+        AppDateUtils.todayString(),
+      );
+      context.read<NotificationProvider>().startStreaming('admin');
     });
   }
 
@@ -36,15 +38,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     final totalEmployees = userProvider.employees.length;
     final todayRecords = attendanceProvider.dailyAttendance;
-    final presentCount =
-        todayRecords.where((a) => a.status.toJson() == 'present').length;
-    final lateCount =
-        todayRecords.where((a) => a.status.toJson() == 'late').length;
+    final presentCount = todayRecords
+        .where((a) => a.status.toJson() == 'present')
+        .length;
+    final lateCount = todayRecords
+        .where((a) => a.status.toJson() == 'late')
+        .length;
     final absentCount = totalEmployees - presentCount - lateCount;
+
+    final unreadCount = context.watch<NotificationProvider>().unreadCount;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text(AppStrings.dashboard),
+        actions: [
+          IconButton(
+            icon: Badge(
+              isLabelVisible: unreadCount > 0,
+              label: Text(unreadCount.toString()),
+              child: const Icon(Icons.notifications_rounded),
+            ),
+            onPressed: () => context.go('/admin/notifications'),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       drawer: const AppDrawer(),
       body: SingleChildScrollView(
@@ -64,10 +81,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             const SizedBox(height: 4),
             Text(
               AppDateUtils.toDisplayDate(DateTime.now()),
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 14,
-              ),
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 14),
             ),
             const SizedBox(height: 28),
 
@@ -197,10 +211,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 13,
-            ),
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
           ),
         ],
       ),
@@ -222,8 +233,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         border: Border.all(color: AppColors.divider, width: 0.5),
       ),
       child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
         leading: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
@@ -242,17 +252,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ),
         subtitle: Text(
           subtitle,
-          style: const TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 12,
-          ),
+          style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
         ),
-        trailing: const Icon(Icons.chevron_right_rounded,
-            color: AppColors.textMuted),
+        trailing: const Icon(
+          Icons.chevron_right_rounded,
+          color: AppColors.textMuted,
+        ),
         onTap: () => context.go(route),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
   }

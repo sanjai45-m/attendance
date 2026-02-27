@@ -6,11 +6,7 @@ class StatusBadge extends StatelessWidget {
   final AttendanceStatus status;
   final double fontSize;
 
-  const StatusBadge({
-    super.key,
-    required this.status,
-    this.fontSize = 12,
-  });
+  const StatusBadge({super.key, required this.status, this.fontSize = 12});
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +25,10 @@ class StatusBadge extends StatelessWidget {
       case AttendanceStatus.absent:
         bgColor = AppColors.error.withValues(alpha: 0.15);
         textColor = AppColors.error;
+        break;
+      case AttendanceStatus.onLeave:
+        bgColor = AppColors.primary.withValues(alpha: 0.15);
+        textColor = AppColors.primary;
         break;
     }
 

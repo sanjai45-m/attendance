@@ -24,8 +24,12 @@ class SettingsProvider extends ChangeNotifier {
     try {
       _settings = await _firestoreService.getSettings();
       debugPrint('[SettingsProvider] Settings loaded successfully');
-      debugPrint('[SettingsProvider] botToken: ${_settings.telegramBotToken.isNotEmpty ? "SET" : "EMPTY"}');
-      debugPrint('[SettingsProvider] chatId: ${_settings.telegramChatId.isNotEmpty ? "SET" : "EMPTY"}');
+      debugPrint(
+        '[SettingsProvider] botToken: ${_settings.telegramBotToken.isNotEmpty ? "SET" : "EMPTY"}',
+      );
+      debugPrint(
+        '[SettingsProvider] chatId: ${_settings.telegramChatId.isNotEmpty ? "SET" : "EMPTY"}',
+      );
     } catch (e) {
       debugPrint('[SettingsProvider] ERROR loading settings: $e');
       _error = 'Failed to load settings.';
@@ -50,7 +54,6 @@ class SettingsProvider extends ChangeNotifier {
     );
   }
 
-  /// Update settings
   Future<bool> updateSettings(AppSettingsModel newSettings) async {
     _isLoading = true;
     _error = null;
@@ -64,6 +67,26 @@ class SettingsProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = 'Failed to update settings.';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Update only specific fields in settings, preserving everything else
+  Future<bool> updateSpecificSettings(Map<String, dynamic> data) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await _firestoreService.updateSettings(data);
+      // Local _settings will be updated automatically by streamSettings if active
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = 'Failed to update settings partially.';
       _isLoading = false;
       notifyListeners();
       return false;

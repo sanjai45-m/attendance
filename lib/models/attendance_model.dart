@@ -97,4 +97,38 @@ class AttendanceModel {
     final minutes = ((totalHours! - hours) * 60).round();
     return '${hours}h ${minutes}m';
   }
+
+  double getOvertimeHours(String workEndTime) {
+    if (punchOut == null) return 0.0;
+
+    // Parse the configured end time
+    final parts = workEndTime.split(':');
+    if (parts.length < 2) return 0.0;
+
+    final endHour = int.tryParse(parts[0]) ?? 18;
+    final endMinute = int.tryParse(parts[1]) ?? 0;
+
+    // Create a DateTime representing the threshold for this punchOut day
+    final threshold = DateTime(
+      punchOut!.year,
+      punchOut!.month,
+      punchOut!.day,
+      endHour,
+      endMinute,
+    );
+
+    if (punchOut!.isAfter(threshold)) {
+      return punchOut!.difference(threshold).inMinutes / 60.0;
+    }
+    return 0.0;
+  }
+
+  String formatOvertimeHours(String workEndTime) {
+    final ot = getOvertimeHours(workEndTime);
+    if (ot <= 0.01) return '';
+
+    final hours = ot.floor();
+    final minutes = ((ot - hours) * 60).round();
+    return '${hours}h ${minutes}m OT';
+  }
 }

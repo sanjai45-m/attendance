@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:attendance/core/constants/app_colors.dart';
 import 'package:attendance/core/utils/date_utils.dart';
 import 'package:attendance/models/attendance_model.dart';
+import 'package:attendance/providers/settings_provider.dart';
+import 'package:provider/provider.dart';
 import 'package:attendance/widgets/status_badge.dart';
 
 class AttendanceCard extends StatelessWidget {
@@ -16,6 +18,11 @@ class AttendanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final settingsProv = context.watch<SettingsProvider>();
+    final overtimeText = attendance.formatOvertimeHours(
+      settingsProv.settings.workEndTime,
+    );
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -64,7 +71,35 @@ class AttendanceCard extends StatelessWidget {
                       fontSize: 14,
                     ),
                   ),
-                StatusBadge(status: attendance.status),
+                Row(
+                  children: [
+                    if (overtimeText.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: AppColors.warning.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        child: Text(
+                          overtimeText,
+                          style: const TextStyle(
+                            color: AppColors.warning,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    StatusBadge(status: attendance.status),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -91,8 +126,10 @@ class AttendanceCard extends StatelessWidget {
                 const Spacer(),
                 // Total hours
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
