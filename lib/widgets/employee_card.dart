@@ -68,6 +68,8 @@ class EmployeeCard extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
                         ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -76,6 +78,8 @@ class EmployeeCard extends StatelessWidget {
                           color: AppColors.textSecondary,
                           fontSize: 12,
                         ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -84,6 +88,8 @@ class EmployeeCard extends StatelessWidget {
                           color: AppColors.textMuted,
                           fontSize: 11,
                         ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
                     ],
                   ),

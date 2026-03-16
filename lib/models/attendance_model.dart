@@ -9,6 +9,8 @@ class AttendanceModel {
   final String date;
   final DateTime? punchIn;
   final DateTime? punchOut;
+  final String? punchInLocation;
+  final String? punchOutLocation;
   final double? totalHours;
   final AttendanceStatus status;
   final DateTime createdAt;
@@ -22,6 +24,8 @@ class AttendanceModel {
     required this.date,
     this.punchIn,
     this.punchOut,
+    this.punchInLocation,
+    this.punchOutLocation,
     this.totalHours,
     required this.status,
     required this.createdAt,
@@ -37,6 +41,8 @@ class AttendanceModel {
       date: map['date'] ?? '',
       punchIn: (map['punchIn'] as Timestamp?)?.toDate(),
       punchOut: (map['punchOut'] as Timestamp?)?.toDate(),
+      punchInLocation: map['punchInLocation']?.toString(),
+      punchOutLocation: map['punchOutLocation']?.toString(),
       totalHours: (map['totalHours'] as num?)?.toDouble(),
       status: AttendanceStatus.fromString(map['status'] ?? 'absent'),
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -52,6 +58,8 @@ class AttendanceModel {
       'date': date,
       'punchIn': punchIn != null ? Timestamp.fromDate(punchIn!) : null,
       'punchOut': punchOut != null ? Timestamp.fromDate(punchOut!) : null,
+      'punchInLocation': punchInLocation,
+      'punchOutLocation': punchOutLocation,
       'totalHours': totalHours,
       'status': status.toJson(),
       'createdAt': Timestamp.fromDate(createdAt),
@@ -67,6 +75,8 @@ class AttendanceModel {
     String? date,
     DateTime? punchIn,
     DateTime? punchOut,
+    String? punchInLocation,
+    String? punchOutLocation,
     double? totalHours,
     AttendanceStatus? status,
     DateTime? createdAt,
@@ -80,6 +90,8 @@ class AttendanceModel {
       date: date ?? this.date,
       punchIn: punchIn ?? this.punchIn,
       punchOut: punchOut ?? this.punchOut,
+      punchInLocation: punchInLocation ?? this.punchInLocation,
+      punchOutLocation: punchOutLocation ?? this.punchOutLocation,
       totalHours: totalHours ?? this.totalHours,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,

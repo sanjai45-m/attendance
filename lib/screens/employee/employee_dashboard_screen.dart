@@ -37,6 +37,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
     final auth = context.watch<AuthProvider>();
     final attendance = context.watch<AttendanceProvider>();
     final today = attendance.todayAttendance;
+    final isOnLeave = attendance.isOnLeave;
 
     final unreadCount = context.watch<NotificationProvider>().unreadCount;
 
@@ -82,11 +83,18 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
+                gradient: isOnLeave
+                    ? const LinearGradient(
+                        colors: [Color(0xFFFFA726), Color(0xFFFF9800)],
+                      )
+                    : AppColors.primaryGradient,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.25),
+                    color: (isOnLeave
+                            ? const Color(0xFFFF9800)
+                            : AppColors.primary)
+                        .withValues(alpha: 0.25),
                     blurRadius: 20,
                     offset: const Offset(0, 8),
                   ),
@@ -100,28 +108,32 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
                   ),
                   const SizedBox(height: 10),
                   Icon(
-                    today == null
-                        ? Icons.remove_circle_outline
-                        : today.hasPunchedOut
-                        ? Icons.check_circle_rounded
-                        : Icons.timelapse_rounded,
+                    isOnLeave
+                        ? Icons.event_available_rounded
+                        : today == null
+                            ? Icons.remove_circle_outline
+                            : today.hasPunchedOut
+                            ? Icons.check_circle_rounded
+                            : Icons.timelapse_rounded,
                     color: Colors.white,
                     size: 48,
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    today == null
-                        ? 'Not Punched In'
-                        : today.hasPunchedOut
-                        ? 'Day Complete'
-                        : 'Working...',
+                    isOnLeave
+                        ? 'On Leave'
+                        : today == null
+                            ? 'Not Punched In'
+                            : today.hasPunchedOut
+                            ? 'Day Complete'
+                            : 'Working...',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  if (today != null) ...[
+                  if (today != null && !isOnLeave) ...[
                     const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,

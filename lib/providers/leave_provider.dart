@@ -72,6 +72,18 @@ class LeaveProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Check for duplicate leave request on the same date
+      final alreadyExists = await _firestoreService.checkExistingLeaveRequest(
+        uid,
+        date,
+      );
+      if (alreadyExists) {
+        _error = 'You have already applied for leave on this date.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
       final request = LeaveRequestModel(
         uid: uid,
         employeeId: employeeId,
@@ -143,18 +155,34 @@ class LeaveProvider extends ChangeNotifier {
     try {
       await _firestoreService.updateLeaveRequestStatus(request.id!, newStatus);
 
-      // If approved, create a dummy Attendance record for that day
+      // If approved, handle attendance record for that day
       if (newStatus == 'Approved') {
-        final attendance = AttendanceModel(
-          uid: request.uid,
-          employeeId: request.employeeId,
-          employeeName: request.employeeName,
-          date: request.date,
-          status: AttendanceStatus.onLeave,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
+        // Check if an attendance record already exists (e.g. employee punched in)
+        final existing = await _firestoreService.getTodayAttendance(
+          request.uid,
+          request.date,
         );
-        await _firestoreService.createAttendance(attendance);
+
+        if (existing != null && existing.id != null) {
+          // Update existing record to 'onLeave' and clear punch out/hours
+          await _firestoreService.updateAttendance(existing.id!, {
+            'status': AttendanceStatus.onLeave.toJson(),
+            'punchOut': null,
+            'totalHours': null,
+          });
+        } else {
+          // Create a new 'onLeave' attendance record
+          final attendance = AttendanceModel(
+            uid: request.uid,
+            employeeId: request.employeeId,
+            employeeName: request.employeeName,
+            date: request.date,
+            status: AttendanceStatus.onLeave,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+          await _firestoreService.createAttendance(attendance);
+        }
       }
 
       // Notify the employee (In-App)

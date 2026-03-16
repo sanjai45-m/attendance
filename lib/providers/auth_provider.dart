@@ -5,6 +5,8 @@ import 'package:attendance/models/user_model.dart';
 import 'package:attendance/core/enums/user_role.dart';
 import 'package:attendance/services/auth_service.dart';
 import 'package:attendance/services/fcm_service.dart';
+import 'package:attendance/services/local_notification_service.dart';
+import 'package:attendance/services/background_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -31,6 +33,10 @@ class AuthProvider extends ChangeNotifier {
         _currentUser = await _authService.getUserDoc(firebaseUser.uid);
         if (_currentUser != null) {
           await _setupFCM(_currentUser!.uid);
+          
+          if (_currentUser!.role == UserRole.admin) {
+            await BackgroundService.registerLeaveReminderTask();
+          }
         }
       }
     } catch (e) {
@@ -60,6 +66,10 @@ class AuthProvider extends ChangeNotifier {
       // Setup FCM after successful login
       await _setupFCM(_currentUser!.uid);
 
+      if (_currentUser!.role == UserRole.admin) {
+        await BackgroundService.registerLeaveReminderTask();
+      }
+
       return true;
     } on FirebaseAuthException catch (e) {
       _error = _parseAuthError(e.code);
@@ -76,6 +86,10 @@ class AuthProvider extends ChangeNotifier {
 
   /// Logout
   Future<void> logout() async {
+    if (_currentUser?.role == UserRole.admin) {
+      await BackgroundService.cancelLeaveReminderTask();
+    }
+    
     await _authService.signOut();
     _currentUser = null;
     _error = null;
@@ -146,11 +160,18 @@ class AuthProvider extends ChangeNotifier {
       await _fcmService.saveTokenToFirestore(uid);
       _fcmService.listenForTokenRefresh(uid);
 
-      // Handle foreground notifications
+      // Handle foreground notifications — show as local notification
       _fcmService.setupForegroundHandler((message) {
         debugPrint(
           '[AuthProvider] Foreground notification: ${message.notification?.title}',
         );
+        final notification = message.notification;
+        if (notification != null) {
+          LocalNotificationService.instance.show(
+            title: notification.title ?? '',
+            body: notification.body ?? '',
+          );
+        }
       });
     } catch (e) {
       debugPrint('[AuthProvider] FCM setup error: $e');

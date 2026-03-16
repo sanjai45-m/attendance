@@ -115,6 +115,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.nightlight_round,
               ),
 
+              const SizedBox(height: 32),
+
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.cardBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.divider),
+                ),
+                child: SwitchListTile(
+                  title: const Text(
+                    'Leave Reminders',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Receive a push notification every 5 hours if there are pending leave requests.',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                  ),
+                  activeColor: AppColors.primary,
+                  value: settingsProv.settings.enableLeaveReminders,
+                  onChanged: (val) async {
+                    setState(() => _isSaving = true);
+                    await settingsProv.updateSpecificSettings({
+                      'enableLeaveReminders': val,
+                    });
+                    setState(() => _isSaving = false);
+                  },
+                ),
+              ),
+
               const SizedBox(height: 40),
 
               SizedBox(

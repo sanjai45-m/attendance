@@ -5,6 +5,7 @@ class AppSettingsModel {
   final String telegramBotToken;
   final String telegramChatId;
   final String fcmServerKey;
+  final bool enableLeaveReminders;
 
   AppSettingsModel({
     this.lateThresholdMinutes = 15,
@@ -13,6 +14,7 @@ class AppSettingsModel {
     this.telegramBotToken = '',
     this.telegramChatId = '',
     this.fcmServerKey = '',
+    this.enableLeaveReminders = true,
   });
 
   factory AppSettingsModel.fromMap(Map<String, dynamic> map) {
@@ -28,6 +30,7 @@ class AppSettingsModel {
       telegramBotToken: map['telegramBotToken']?.toString() ?? '',
       telegramChatId: map['telegramChatId']?.toString() ?? '',
       fcmServerKey: map['fcmServerKey']?.toString() ?? '',
+      enableLeaveReminders: map['enableLeaveReminders'] ?? true,
     );
   }
 
@@ -39,6 +42,7 @@ class AppSettingsModel {
       'telegramBotToken': telegramBotToken,
       'telegramChatId': telegramChatId,
       'fcmServerKey': fcmServerKey,
+      'enableLeaveReminders': enableLeaveReminders,
     };
   }
 
@@ -54,6 +58,7 @@ class AppSettingsModel {
     String? telegramBotToken,
     String? telegramChatId,
     String? fcmServerKey,
+    bool? enableLeaveReminders,
   }) {
     return AppSettingsModel(
       lateThresholdMinutes: lateThresholdMinutes ?? this.lateThresholdMinutes,
@@ -62,6 +67,7 @@ class AppSettingsModel {
       telegramBotToken: telegramBotToken ?? this.telegramBotToken,
       telegramChatId: telegramChatId ?? this.telegramChatId,
       fcmServerKey: fcmServerKey ?? this.fcmServerKey,
+      enableLeaveReminders: enableLeaveReminders ?? this.enableLeaveReminders,
     );
   }
 }

@@ -31,6 +31,9 @@ dependencies:
   # FCM v1 API auth
   googleapis_auth: ^1.6.0
 
+  # Local Notifications (foreground FCM)
+  flutter_local_notifications: ^18.0.1
+
   # Utilities
   intl: ^0.20.2
   path_provider: ^2.1.5
@@ -39,6 +42,9 @@ dependencies:
   shimmer: ^3.0.0
   fl_chart: ^0.70.2
   share_plus: ^10.1.4
+  workmanager: ^0.9.0+3
+  geolocator: ^14.0.2
+  geocoding: ^4.0.0
 
 dev_dependencies:
   flutter_test:

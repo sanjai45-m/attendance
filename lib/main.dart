@@ -8,6 +8,8 @@ import 'package:attendance/providers/attendance_provider.dart';
 import 'package:attendance/providers/settings_provider.dart';
 import 'package:attendance/providers/leave_provider.dart';
 import 'package:attendance/providers/notification_provider.dart';
+import 'package:attendance/services/local_notification_service.dart';
+import 'package:attendance/services/background_service.dart';
 import 'package:attendance/app.dart';
 
 /// Top-level background message handler (must be outside any class)
@@ -20,6 +22,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // Initialize local notifications for foreground FCM display
+  await LocalNotificationService.instance.initialize();
+
+  // Initialize background service (Workmanager)
+  await BackgroundService.initialize();
 
   // Setup FCM background handler
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);

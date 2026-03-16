@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:attendance/models/attendance_model.dart';
 import 'package:attendance/models/app_settings_model.dart';
+import 'package:attendance/models/app_notification_model.dart';
 import 'package:attendance/core/enums/attendance_status.dart';
 import 'package:attendance/core/utils/date_utils.dart';
 import 'package:attendance/services/firestore_service.dart';
@@ -40,7 +41,11 @@ class AttendanceProvider extends ChangeNotifier {
   bool get canPunchOut =>
       _todayAttendance != null &&
       _todayAttendance!.hasPunchedIn &&
-      !_todayAttendance!.hasPunchedOut;
+      !_todayAttendance!.hasPunchedOut &&
+      _todayAttendance!.status != AttendanceStatus.onLeave;
+  bool get isOnLeave =>
+      _todayAttendance != null &&
+      _todayAttendance!.status == AttendanceStatus.onLeave;
 
   /// Load today's attendance for the current employee
   Future<void> loadTodayAttendance(String uid) async {
@@ -66,6 +71,7 @@ class AttendanceProvider extends ChangeNotifier {
     required String employeeId,
     required String employeeName,
     required AppSettingsModel settings,
+    required String location,
   }) async {
     _isPunching = true;
     _error = null;
@@ -98,6 +104,7 @@ class AttendanceProvider extends ChangeNotifier {
         employeeName: employeeName,
         date: AppDateUtils.todayString(),
         punchIn: now,
+        punchInLocation: location,
         status: isLate ? AttendanceStatus.late_ : AttendanceStatus.present,
         createdAt: now,
         updatedAt: now,
@@ -105,6 +112,18 @@ class AttendanceProvider extends ChangeNotifier {
 
       await _firestoreService.createAttendance(attendance);
       _todayAttendance = attendance;
+
+      // Send in-app notification to Admin
+      await _firestoreService.sendNotification(
+        AppNotificationModel(
+          targetUid: 'admin',
+          title: '✅ Punch In',
+          message:
+              '$employeeName ($employeeId) punched in at ${AppDateUtils.toTimeString(now)}\nLocation: $location',
+          type: 'PunchIn',
+          createdAt: now,
+        ),
+      );
 
       // Send Telegram notification
       debugPrint(
@@ -122,11 +141,13 @@ class AttendanceProvider extends ChangeNotifier {
           employeeId: employeeId,
           time: AppDateUtils.toTimeString(now),
         );
+        // Append location
+        final messageWithLocation = '$message\n📍 Location: $location';
         debugPrint('[AttendanceProvider] Sending Telegram message...');
         await _telegramService.sendMessage(
           botToken: settings.telegramBotToken,
           chatId: settings.telegramChatId,
-          message: message,
+          message: messageWithLocation,
         );
         debugPrint('[AttendanceProvider] Telegram message sent!');
       }
@@ -135,7 +156,7 @@ class AttendanceProvider extends ChangeNotifier {
       await _fcmService.sendPunchNotification(
         title: '✅ Punch In',
         body:
-            '$employeeName ($employeeId) punched in at ${AppDateUtils.toTimeString(now)}',
+            '$employeeName ($employeeId) punched in at ${AppDateUtils.toTimeString(now)} from $location',
       );
 
       _isPunching = false;
@@ -156,6 +177,7 @@ class AttendanceProvider extends ChangeNotifier {
     required String employeeId,
     required String employeeName,
     required AppSettingsModel settings,
+    required String location,
   }) async {
     _isPunching = true;
     _error = null;
@@ -186,12 +208,26 @@ class AttendanceProvider extends ChangeNotifier {
 
       await _firestoreService.updateAttendance(existing.id!, {
         'punchOut': Timestamp.fromDate(now),
+        'punchOutLocation': location,
         'totalHours': totalHours,
       });
 
       _todayAttendance = existing.copyWith(
         punchOut: now,
+        punchOutLocation: location,
         totalHours: totalHours,
+      );
+
+      // Send in-app notification to Admin
+      await _firestoreService.sendNotification(
+        AppNotificationModel(
+          targetUid: 'admin',
+          title: '🔴 Punch Out',
+          message:
+              '$employeeName ($employeeId) punched out at ${AppDateUtils.toTimeString(now)} — Worked ${_todayAttendance!.totalHoursFormatted}\nLocation: $location',
+          type: 'PunchOut',
+          createdAt: now,
+        ),
       );
 
       // Send Telegram notification
@@ -202,10 +238,11 @@ class AttendanceProvider extends ChangeNotifier {
           time: AppDateUtils.toTimeString(now),
           totalHours: _todayAttendance!.totalHoursFormatted,
         );
+        final messageWithLocation = '$message\n📍 Location: $location';
         await _telegramService.sendMessage(
           botToken: settings.telegramBotToken,
           chatId: settings.telegramChatId,
-          message: message,
+          message: messageWithLocation,
         );
       }
 
@@ -213,7 +250,7 @@ class AttendanceProvider extends ChangeNotifier {
       await _fcmService.sendPunchNotification(
         title: '🔴 Punch Out',
         body:
-            '$employeeName ($employeeId) punched out at ${AppDateUtils.toTimeString(now)} — Worked ${_todayAttendance!.totalHoursFormatted}',
+            '$employeeName ($employeeId) punched out at ${AppDateUtils.toTimeString(now)} from $location — Worked ${_todayAttendance!.totalHoursFormatted}',
       );
 
       _isPunching = false;
@@ -230,6 +267,7 @@ class AttendanceProvider extends ChangeNotifier {
   /// Stream employee's attendance history
   void loadMyHistory(String uid) {
     _historySubscription?.cancel();
+    _error = null; // Clear stale errors
     if (FirebaseAuth.instance.currentUser == null) {
       debugPrint(
         '[AttendanceProvider] Skipping loadMyHistory — not authenticated',
@@ -241,9 +279,11 @@ class AttendanceProvider extends ChangeNotifier {
         .listen(
           (list) {
             _myHistory = list;
+            _error = null;
             notifyListeners();
           },
           onError: (e) {
+            debugPrint('[AttendanceProvider] History stream error: $e');
             _error = 'Failed to load attendance history.';
             notifyListeners();
           },

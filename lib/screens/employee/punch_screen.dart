@@ -6,6 +6,7 @@ import 'package:attendance/core/utils/date_utils.dart';
 import 'package:attendance/providers/auth_provider.dart';
 import 'package:attendance/providers/attendance_provider.dart';
 import 'package:attendance/providers/settings_provider.dart';
+import 'package:attendance/services/location_service.dart';
 
 class PunchScreen extends StatefulWidget {
   const PunchScreen({super.key});
@@ -55,6 +56,7 @@ class _PunchScreenState extends State<PunchScreen>
     final canPunchIn = attendance.canPunchIn;
     final canPunchOut = attendance.canPunchOut;
     final isComplete = today?.isComplete ?? false;
+    final isOnLeave = attendance.isOnLeave;
 
     return Scaffold(
       appBar: AppBar(
@@ -96,12 +98,12 @@ class _PunchScreenState extends State<PunchScreen>
                 animation: _pulseAnimation,
                 builder: (context, child) {
                   return Transform.scale(
-                    scale: isComplete ? 1.0 : _pulseAnimation.value,
+                    scale: (isComplete || isOnLeave) ? 1.0 : _pulseAnimation.value,
                     child: child,
                   );
                 },
                 child: GestureDetector(
-                  onTap: attendance.isPunching || isComplete
+                  onTap: (attendance.isPunching || isComplete || isOnLeave)
                       ? null
                       : () => canPunchIn
                           ? _handlePunchIn(auth, settings)
@@ -117,18 +119,24 @@ class _PunchScreenState extends State<PunchScreen>
                           ? const LinearGradient(
                               colors: [AppColors.success, Color(0xFF00C853)],
                             )
-                          : canPunchIn
-                              ? AppColors.primaryGradient
-                              : const LinearGradient(
-                                  colors: [AppColors.error, Color(0xFFFF1744)],
-                                ),
+                          : isOnLeave
+                              ? const LinearGradient(
+                                  colors: [Color(0xFFFFA726), Color(0xFFFF9800)],
+                                )
+                              : canPunchIn
+                                  ? AppColors.primaryGradient
+                                  : const LinearGradient(
+                                      colors: [AppColors.error, Color(0xFFFF1744)],
+                                    ),
                       boxShadow: [
                         BoxShadow(
                           color: (isComplete
                                   ? AppColors.success
-                                  : canPunchIn
-                                      ? AppColors.primary
-                                      : AppColors.error)
+                                  : isOnLeave
+                                      ? const Color(0xFFFF9800)
+                                      : canPunchIn
+                                          ? AppColors.primary
+                                          : AppColors.error)
                               .withValues(alpha: 0.35),
                           blurRadius: 32,
                           spreadRadius: 4,
@@ -148,9 +156,11 @@ class _PunchScreenState extends State<PunchScreen>
                                 Icon(
                                   isComplete
                                       ? Icons.check_circle_rounded
-                                      : canPunchIn
-                                          ? Icons.fingerprint_rounded
-                                          : Icons.logout_rounded,
+                                      : isOnLeave
+                                          ? Icons.event_available_rounded
+                                          : canPunchIn
+                                              ? Icons.fingerprint_rounded
+                                              : Icons.logout_rounded,
                                   color: Colors.white,
                                   size: 56,
                                 ),
@@ -158,9 +168,11 @@ class _PunchScreenState extends State<PunchScreen>
                                 Text(
                                   isComplete
                                       ? 'Done'
-                                      : canPunchIn
-                                          ? AppStrings.punchIn
-                                          : AppStrings.punchOut,
+                                      : isOnLeave
+                                          ? 'On Leave'
+                                          : canPunchIn
+                                              ? AppStrings.punchIn
+                                              : AppStrings.punchOut,
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 18,
@@ -282,11 +294,38 @@ class _PunchScreenState extends State<PunchScreen>
     final attendanceProv = context.read<AttendanceProvider>();
     final messenger = ScaffoldMessenger.of(context);
 
+    // Provide immediate UX feedback that we are loading something
+    // (attendanceProv.isPunching will be true after we call punchIn, but location fetching happens before it.)
+    // For now we rely on the button's internal state mechanism if possible, but location fetching might look un-responsive.
+    // Instead we will show a quick snackbar to the user.
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Retrieving location...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+
+    String punchLocation = '';
+    try {
+      punchLocation = await LocationService.getCurrentAddress();
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+      return; // Do not proceed to punch if we can't get the location
+    }
+
     final success = await attendanceProv.punchIn(
       uid: user.uid,
       employeeId: user.employeeId,
       employeeName: user.name,
       settings: settings.settings,
+      location: punchLocation,
     );
 
     if (success && mounted) {
@@ -307,11 +346,34 @@ class _PunchScreenState extends State<PunchScreen>
     final attendanceProv = context.read<AttendanceProvider>();
     final messenger = ScaffoldMessenger.of(context);
 
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Retrieving location...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+
+    String punchLocation = '';
+    try {
+      punchLocation = await LocationService.getCurrentAddress();
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+      return; // Do not proceed to punch if we can't get the location
+    }
+
     final success = await attendanceProv.punchOut(
       uid: user.uid,
       employeeId: user.employeeId,
       employeeName: user.name,
       settings: settings.settings,
+      location: punchLocation,
     );
 
     if (success && mounted) {

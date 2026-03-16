@@ -232,6 +232,21 @@ class FirestoreService {
         });
   }
 
+  /// Check if a non-rejected leave request already exists for a given user and date
+  Future<bool> checkExistingLeaveRequest(String uid, String date) async {
+    final snapshot = await _firestore
+        .collection(FirestorePaths.leaveRequests)
+        .where('uid', isEqualTo: uid)
+        .where('date', isEqualTo: date)
+        .get();
+
+    // Return true if any non-rejected request exists
+    return snapshot.docs.any((doc) {
+      final status = doc.data()['status'] as String? ?? '';
+      return status != 'Rejected';
+    });
+  }
+
   // ─── Notifications ──────────────────────────────────────
 
   /// Send a notification
